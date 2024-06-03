@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
-                     
+
 // middleware 
 app.use(cors({
     origin: [
@@ -33,6 +33,8 @@ async function run() {
 
 
         const userCollection = client.db("techAppsDB").collection("users");
+        const productsCollection = client.db("techAppsDB").collection("products");
+        const allProductsCollection = client.db("techAppsDB").collection("allProducts");
         const featuredCollection = client.db("techAppsDB").collection("featured");
 
 
@@ -68,6 +70,19 @@ async function run() {
         }
 
 
+        // user verify moderator after verify token
+        const verifyModerator = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email }
+            const user = await userCollection.findOne(query);
+            const isModerator = user?.role === 'moderator';
+            if (!isModerator) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+            next();
+        }
+
+
         // jwt related api 
         app.post('/jwt', async (req, res) => {
             const user = req.body
@@ -83,6 +98,7 @@ async function run() {
         })
 
 
+        // admin route 
         app.get('/users/admin/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
             if (email !== req.decoded.email) {
@@ -96,7 +112,26 @@ async function run() {
                 admin = user?.role === 'admin'
             }
             res.send({ admin })
+
         })
+
+        // moderator route
+        app.get('/users/moderator/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            console.log(email);
+            if (email !== req.decoded.email) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            let moderator = false;
+            if (user) {
+                moderator = user?.role === 'moderator'
+            }
+            res.send({ moderator })
+        })
+
 
         app.post('/users', async (req, res) => {
             const user = req.body;
@@ -127,7 +162,6 @@ async function run() {
 
         })
 
-    
 
         app.delete('/users/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
@@ -135,7 +169,59 @@ async function run() {
             const result = await userCollection.deleteOne(query);
             res.send(result);
         })
-       
+
+
+        // products related api 
+        app.get('/products', verifyToken, async (req, res) => {
+            const result = await productsCollection.find().toArray();
+            res.send(result);
+        })
+
+        app.get('/products/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+
+            const result = await productsCollection.findOne(query);
+            res.send(result);
+        })
+
+        app.get('/product/:email', async(req, res) => {
+            const query = {email: req.params.email}
+            const result = await productsCollection.find(query).toArray();
+            res.send(result)
+        })
+
+        app.post('/products', async(req, res) => {
+            const query = req.body;
+            const result = await productsCollection.insertOne(query);
+            res.send(result)
+        })
+
+        // allProducts related api
+        app.post('/allProducts', async (req, res) => {
+            const query = req.body;
+            const filter = await allProductsCollection.findOne(query);
+            if (filter) {
+                return res.send({ message: 'Product already exists', insertedId: null })
+            }
+            const result = await allProductsCollection.insertOne(query);
+            res.send(result);
+
+        })
+
+        // featured related api
+        app.post('/featured', async (req, res) => {
+            const query = req.body;
+
+            const filter = await featuredCollection.findOne(query);
+            if (filter) {
+                return res.send({ message: 'Featured already exists', insertedId: null })
+            }
+            const result = await featuredCollection.insertOne(query);
+            res.send(result);
+
+        })
+
 
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
