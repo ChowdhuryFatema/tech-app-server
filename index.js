@@ -197,6 +197,19 @@ async function run() {
             res.send(result)
         })
 
+        app.put('/products/:id', async(req, res) => {
+            const id = req.params.id
+            const status = req.body
+            console.log(status);
+            const query = { _id: new ObjectId(id) }
+            const updateDoc = {
+              $set: status
+            }
+            const result = await productsCollection.updateOne(query, updateDoc)
+            res.send(result)
+        })
+
+
         // allProducts related api
         app.post('/allProducts', async (req, res) => {
             const query = req.body;
@@ -205,10 +218,19 @@ async function run() {
                 return res.send({ message: 'Product already exists', insertedId: null })
             }
             const result = await allProductsCollection.insertOne(query);
+            
             res.send(result);
 
         })
 
+        app.delete('/allProducts/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: id }
+            const result = await allProductsCollection.deleteOne(query);
+            res.send(result);
+        })
+
+      
         // featured related api
         app.post('/featured', async (req, res) => {
             const query = req.body;
