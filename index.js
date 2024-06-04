@@ -31,11 +31,12 @@ async function run() {
         // Connect the client to the server	(optional starting in v4.7)
         // await client.connect();
 
-
-        const userCollection = client.db("techAppsDB").collection("users");
-        const productsCollection = client.db("techAppsDB").collection("products");
-        const allProductsCollection = client.db("techAppsDB").collection("allProducts");
-        const featuredCollection = client.db("techAppsDB").collection("featured");
+        const db = client.db("techAppsDB");
+        const userCollection = db.collection("users");
+        const productsCollection = db.collection("products");
+        const allProductsCollection = db.collection("allProducts");
+        const featuredCollection = db.collection("featured");
+        const reportCollection = db.collection("report");
 
 
         // middlewares
@@ -185,25 +186,25 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/product/:email', async(req, res) => {
-            const query = {email: req.params.email}
+        app.get('/product/:email', async (req, res) => {
+            const query = { email: req.params.email }
             const result = await productsCollection.find(query).toArray();
             res.send(result)
         })
 
-        app.post('/products', async(req, res) => {
+        app.post('/products', async (req, res) => {
             const query = req.body;
             const result = await productsCollection.insertOne(query);
             res.send(result)
         })
 
-        app.put('/products/:id', async(req, res) => {
+        app.put('/products/:id', async (req, res) => {
             const id = req.params.id
             const status = req.body
             console.log(status);
             const query = { _id: new ObjectId(id) }
             const updateDoc = {
-              $set: status
+                $set: status
             }
             const result = await productsCollection.updateOne(query, updateDoc)
             res.send(result)
@@ -211,6 +212,19 @@ async function run() {
 
 
         // allProducts related api
+
+        app.get('/allProducts', async (req, res) => {
+
+            const filter = req.query;
+
+            const queryTitle = {
+                tags: { $regex: filter.search, $options: 'i' }
+            }
+
+            const result = await allProductsCollection.find(queryTitle).toArray();
+            res.send(result);
+        })
+
         app.post('/allProducts', async (req, res) => {
             const query = req.body;
             const filter = await allProductsCollection.findOne(query);
@@ -218,7 +232,7 @@ async function run() {
                 return res.send({ message: 'Product already exists', insertedId: null })
             }
             const result = await allProductsCollection.insertOne(query);
-            
+
             res.send(result);
 
         })
@@ -230,8 +244,13 @@ async function run() {
             res.send(result);
         })
 
-      
+
         // featured related api
+        app.get('/featured', async (req, res) => {
+            const result = await featuredCollection.find().toArray();
+            res.send(result);
+        })
+
         app.post('/featured', async (req, res) => {
             const query = req.body;
 
@@ -242,6 +261,26 @@ async function run() {
             const result = await featuredCollection.insertOne(query);
             res.send(result);
 
+        })
+
+        // reported Product api 
+
+        app.get('/reportedProduct', async (req, res) => {
+            const result = await reportCollection.find().toArray();
+            res.send(result)
+        })
+
+        app.post('/reportedProduct', async (req, res) => {
+            const query = req.body;
+            const result = await reportCollection.insertOne(query);
+            res.send(query);
+        })
+
+        app.delete('/reportedProduct/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: id }
+            const result = await reportCollection.deleteOne(query);
+            res.send(result);
         })
 
 
