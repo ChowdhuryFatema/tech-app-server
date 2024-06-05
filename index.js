@@ -210,6 +210,25 @@ async function run() {
             res.send(result)
         })
 
+        app.put('/product/:id', async (req, res) => {
+            const id = req.params.id
+            const query = { _id: new ObjectId(id) }
+            const filter = req.body;
+            console.log('id', id, 'body', filter, query);
+            const updatedDoc = {
+                $set: {
+                    image: filter.image,
+                    name: filter.name,
+                    description: filter.description,
+                    externalLink: filter.externalLink,
+                    tags: filter.tags,
+                }
+            }
+            const result = await productsCollection.updateOne(query, updatedDoc);
+            res.send(result)
+        })
+
+
 
         // allProducts related api
 
@@ -232,9 +251,17 @@ async function run() {
                 return res.send({ message: 'Product already exists', insertedId: null })
             }
             const result = await allProductsCollection.insertOne(query);
-
             res.send(result);
 
+        })
+        app.patch('/allProducts/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: id }
+            const updateDoc = {
+                $inc: { upvotes: 1 },
+            }
+            const result = await allProductsCollection.updateOne(query, updateDoc)
+            res.send(result)
         })
 
         app.delete('/allProducts/:id', async (req, res) => {
@@ -263,6 +290,16 @@ async function run() {
 
         })
 
+        app.patch('/featured/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: id }
+            const updateDoc = {
+                $inc: { upvotes: 1 },
+            }
+            const result = await featuredCollection.updateOne(query, updateDoc)
+            res.send(result)
+        })
+
         // reported Product api 
 
         app.get('/reportedProduct', async (req, res) => {
@@ -272,6 +309,10 @@ async function run() {
 
         app.post('/reportedProduct', async (req, res) => {
             const query = req.body;
+            const existingReport = await reportCollection.findOne();
+            if (existingReport) {
+                return res.send({ message: 'Product already added to report', insertedId: null })
+            }
             const result = await reportCollection.insertOne(query);
             res.send(query);
         })
