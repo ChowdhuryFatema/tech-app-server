@@ -37,59 +37,62 @@ async function run() {
         const allProductsCollection = db.collection("allProducts");
         const featuredCollection = db.collection("featured");
         const reportCollection = db.collection("report");
+        const reviewCollection = db.collection("reviews");
+        const upVoteCollection = db.collection("upVote");
 
 
-        // middlewares
-        const verifyToken = (req, res, next) => {
-            // console.log('inside verifyToken', req.headers);
-            if (!req.headers.authorization) {
-                return res.status(401).send({ message: 'unauthorized access' })
+            // middlewares
+            const verifyToken = (req, res, next) => {
+                // console.log('inside verifyToken', req.headers);
+                if (!req.headers.authorization) {
+                    return res.status(401).send({ message: 'unauthorized access' })
+                }
+                const token = req.headers.authorization.split(' ')[1]
+                jwt.verify(
+                    token,
+                    process.env.ACCESS_TOKEN_SECRET,
+                    (err, decoded) => {
+                        if (err) {
+                            return res.status(401).send({ message: 'unauthorized access' })
+                        }
+                        req.decoded = decoded;
+                        next();
+                    })
             }
-            const token = req.headers.authorization.split(' ')[1]
-            jwt.verify(
-                token,
-                process.env.ACCESS_TOKEN_SECRET,
-                (err, decoded) => {
-                    if (err) {
-                        return res.status(401).send({ message: 'unauthorized access' })
-                    }
-                    req.decoded = decoded;
-                    next();
-                })
-        }
-
-        // user verify admin after verify token
-        const verifyAdmin = async (req, res, next) => {
-            const email = req.decoded.email;
-            const query = { email: email }
-            const user = await userCollection.findOne(query);
-            const isAdmin = user?.role === 'admin';
-            if (!isAdmin) {
-                return res.status(403).send({ message: 'forbidden access' })
+    
+            // user verify admin after verify token
+            const verifyAdmin = async (req, res, next) => {
+                const email = req.decoded.email;
+                const query = { email: email }
+                const user = await userCollection.findOne(query);
+                const isAdmin = user?.role === 'admin';
+                if (!isAdmin) {
+                    return res.status(403).send({ message: 'forbidden access' })
+                }
+                next();
             }
-            next();
-        }
+    
+    
+            // jwt related api 
+            app.post('/jwt', async (req, res) => {
+                const user = req.body
+                const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '365d' });
+                res.send({ token });
+            })
 
 
         // user verify moderator after verify token
-        const verifyModerator = async (req, res, next) => {
-            const email = req.decoded.email;
-            const query = { email: email }
-            const user = await userCollection.findOne(query);
-            const isModerator = user?.role === 'moderator';
-            if (!isModerator) {
-                return res.status(403).send({ message: 'forbidden access' })
-            }
-            next();
-        }
+        // const verifyModerator = async (req, res, next) => {
+        //     const email = req.decoded.email;
+        //     const query = { email: email }
+        //     const user = await userCollection.findOne(query);
+        //     const isModerator = user?.role === 'moderator';
+        //     if (!isModerator) {
+        //         return res.status(403).send({ message: 'forbidden access' })
+        //     }
+        //     next();
+        // }
 
-
-        // jwt related api 
-        app.post('/jwt', async (req, res) => {
-            const user = req.body
-            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '365d' });
-            res.send({ token });
-        })
 
         // user collection 
         app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
@@ -119,7 +122,6 @@ async function run() {
         // moderator route
         app.get('/users/moderator/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
-            console.log(email);
             if (email !== req.decoded.email) {
                 return res.status(403).send({ message: 'forbidden access' })
             }
@@ -186,7 +188,7 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/product/:email', async (req, res) => {
+        app.get('/product/:email', verifyToken, async (req, res) => {
             const query = { email: req.params.email }
             const result = await productsCollection.find(query).toArray();
             res.send(result)
@@ -254,15 +256,32 @@ async function run() {
             res.send(result);
 
         })
-        app.patch('/allProducts/:id', async (req, res) => {
+
+
+        app.put('/allProducts/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
-            const query = { _id: id }
+            const query = {_id: id}
+            const voteQuery = { productId: id }
+            
+            const options = { upsert: true };
             const updateDoc = {
                 $inc: { upvotes: 1 },
             }
-            const result = await allProductsCollection.updateOne(query, updateDoc)
+            
+            // const existingUpvote = await upVoteCollection.findOne(voteQuery);
+           
+            // console.log(existingUpvote.productId, id, existingUpvote.email, req.decoded.email);
+
+            // if(existingUpvote && (existingUpvote.productId === id && existingUpvote.email === req.decoded.email)){
+            //     return res.send({ message: 'Upvote already added', insertedId: null })
+            // }
+
+
+            const result = await allProductsCollection.updateOne(query, updateDoc, options)
             res.send(result)
         })
+
+
 
         app.delete('/allProducts/:id', async (req, res) => {
             const id = req.params.id;
@@ -293,10 +312,18 @@ async function run() {
         app.patch('/featured/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: id }
+            const options = { upsert: true };
             const updateDoc = {
                 $inc: { upvotes: 1 },
+                $set: { upvote: 'true'}
             }
-            const result = await featuredCollection.updateOne(query, updateDoc)
+            const existingUpvote = await featuredCollection.findOne(query);
+
+            if(existingUpvote.upvote == 'true'){
+                return res.send({ message: 'Upvote already added', insertedId: null })
+            }
+
+            const result = await featuredCollection.updateOne(query, updateDoc, options)
             res.send(result)
         })
 
@@ -321,6 +348,26 @@ async function run() {
             const id = req.params.id;
             const query = { _id: id }
             const result = await reportCollection.deleteOne(query);
+            res.send(result);
+        })
+
+        // review product api 
+
+        app.get('/productReview', async(req, res) => {
+            const result = await reviewCollection.find().toArray();
+            res.send(result);
+        })
+
+        app.post('/productReview', async(req, res) => {
+            const query = req.body;
+            const result = await reviewCollection.insertOne(query);
+            res.send(result)
+        })
+
+        // upvote api 
+        app.post('/upVote', async(req, res) => {
+            const query = req.body;
+            const result = await upVoteCollection.insertOne(query);
             res.send(result);
         })
 
