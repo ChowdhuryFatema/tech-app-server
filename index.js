@@ -41,44 +41,80 @@ async function run() {
         const upVoteCollection = db.collection("upVote");
 
 
-            // middlewares
-            const verifyToken = (req, res, next) => {
-                // console.log('inside verifyToken', req.headers);
-                if (!req.headers.authorization) {
-                    return res.status(401).send({ message: 'unauthorized access' })
-                }
-                const token = req.headers.authorization.split(' ')[1]
-                jwt.verify(
-                    token,
-                    process.env.ACCESS_TOKEN_SECRET,
-                    (err, decoded) => {
-                        if (err) {
-                            return res.status(401).send({ message: 'unauthorized access' })
-                        }
-                        req.decoded = decoded;
-                        next();
-                    })
+        // middlewares
+        const verifyToken = (req, res, next) => {
+            // console.log('inside verifyToken', req.headers);
+            if (!req.headers.authorization) {
+                return res.status(401).send({ message: 'unauthorized access' })
             }
-    
-            // user verify admin after verify token
-            const verifyAdmin = async (req, res, next) => {
-                const email = req.decoded.email;
-                const query = { email: email }
-                const user = await userCollection.findOne(query);
-                const isAdmin = user?.role === 'admin';
-                if (!isAdmin) {
-                    return res.status(403).send({ message: 'forbidden access' })
-                }
-                next();
+            const token = req.headers.authorization.split(' ')[1]
+            jwt.verify(
+                token,
+                process.env.ACCESS_TOKEN_SECRET,
+                (err, decoded) => {
+                    if (err) {
+                        return res.status(401).send({ message: 'unauthorized access' })
+                    }
+                    req.decoded = decoded;
+                    next();
+                })
+        }
+
+        // user verify admin after verify token
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email }
+            const user = await userCollection.findOne(query);
+            const isAdmin = user?.role === 'admin';
+            if (!isAdmin) {
+                return res.status(403).send({ message: 'forbidden access' })
             }
-    
-    
-            // jwt related api 
-            app.post('/jwt', async (req, res) => {
-                const user = req.body
-                const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '365d' });
-                res.send({ token });
+            next();
+        }
+
+
+        // jwt related api 
+        app.post('/jwt', async (req, res) => {
+            const user = req.body
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '365d' });
+            res.send({ token });
+        })
+
+
+        // payment intent
+        app.post('/create-payment-intent', async (req, res) => {
+            const { price } = req.body;
+            const amount = parseInt(price * 100);
+
+            console.log(amount, 'amount inside the intent');
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ["card", "link"],
             })
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        })
+
+
+        app.post('/payments', async(req, res) => {
+            const payment = req.body;
+            const paymentResult = await paymentCollection.insertOne(payment);
+
+            // carefully delete each item from the cart
+            console.log('payment info', payment);
+
+
+            const query = {_id: {
+                $in: payment.cartIds.map(id => new ObjectId(id))
+            }}
+            const deleteResult = await cartsCollection.deleteMany(query)
+
+            res.send({paymentResult, deleteResult});
+        })
+
 
 
         // user verify moderator after verify token
@@ -260,16 +296,16 @@ async function run() {
 
         app.put('/allProducts/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
-            const query = {_id: id}
+            const query = { _id: id }
             const voteQuery = { productId: id }
-            
+
             const options = { upsert: true };
             const updateDoc = {
                 $inc: { upvotes: 1 },
             }
-            
+
             // const existingUpvote = await upVoteCollection.findOne(voteQuery);
-           
+
             // console.log(existingUpvote.productId, id, existingUpvote.email, req.decoded.email);
 
             // if(existingUpvote && (existingUpvote.productId === id && existingUpvote.email === req.decoded.email)){
@@ -315,11 +351,11 @@ async function run() {
             const options = { upsert: true };
             const updateDoc = {
                 $inc: { upvotes: 1 },
-                $set: { upvote: 'true'}
+                $set: { upvote: 'true' }
             }
             const existingUpvote = await featuredCollection.findOne(query);
 
-            if(existingUpvote.upvote == 'true'){
+            if (existingUpvote.upvote == 'true') {
                 return res.send({ message: 'Upvote already added', insertedId: null })
             }
 
@@ -353,19 +389,19 @@ async function run() {
 
         // review product api 
 
-        app.get('/productReview', async(req, res) => {
+        app.get('/productReview', async (req, res) => {
             const result = await reviewCollection.find().toArray();
             res.send(result);
         })
 
-        app.post('/productReview', async(req, res) => {
+        app.post('/productReview', async (req, res) => {
             const query = req.body;
             const result = await reviewCollection.insertOne(query);
             res.send(result)
         })
 
         // upvote api 
-        app.post('/upVote', async(req, res) => {
+        app.post('/upVote', async (req, res) => {
             const query = req.body;
             const result = await upVoteCollection.insertOne(query);
             res.send(result);
