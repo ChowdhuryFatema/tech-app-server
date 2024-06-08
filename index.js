@@ -3,7 +3,7 @@ const app = express();
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
-
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
 
@@ -39,6 +39,8 @@ async function run() {
         const reportCollection = db.collection("report");
         const reviewCollection = db.collection("reviews");
         const upVoteCollection = db.collection("upVote");
+        const paymentCollection = db.collection("payments");
+        const couponCollection = db.collection("coupon");
 
 
         // middlewares
@@ -79,42 +81,6 @@ async function run() {
             const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '365d' });
             res.send({ token });
         })
-
-
-        // payment intent
-        app.post('/create-payment-intent', async (req, res) => {
-            const { price } = req.body;
-            const amount = parseInt(price * 100);
-
-            console.log(amount, 'amount inside the intent');
-
-            const paymentIntent = await stripe.paymentIntents.create({
-                amount: amount,
-                currency: 'usd',
-                payment_method_types: ["card", "link"],
-            })
-            res.send({
-                clientSecret: paymentIntent.client_secret,
-            });
-        })
-
-
-        app.post('/payments', async(req, res) => {
-            const payment = req.body;
-            const paymentResult = await paymentCollection.insertOne(payment);
-
-            // carefully delete each item from the cart
-            console.log('payment info', payment);
-
-
-            const query = {_id: {
-                $in: payment.cartIds.map(id => new ObjectId(id))
-            }}
-            const deleteResult = await cartsCollection.deleteMany(query)
-
-            res.send({paymentResult, deleteResult});
-        })
-
 
 
         // user verify moderator after verify token
@@ -224,6 +190,13 @@ async function run() {
             res.send(result);
         })
 
+        // app.get('/product/:accepted', async(req, res) => {
+        //     const query = {role: req.params.role}
+        //     console.log(query);
+        //     const result = await productsCollection.find(query);
+        //     res.send(result);
+        // })
+
         app.get('/product/:email', verifyToken, async (req, res) => {
             const query = { email: req.params.email }
             const result = await productsCollection.find(query).toArray();
@@ -263,6 +236,19 @@ async function run() {
                 }
             }
             const result = await productsCollection.updateOne(query, updatedDoc);
+            res.send(result)
+        })
+
+        app.delete('/product/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await productsCollection.deleteOne(query);
+            res.send(result)
+        })
+        app.delete('/allProduct/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: id }
+            const result = await allProductsCollection.deleteOne(query);
             res.send(result)
         })
 
@@ -405,6 +391,82 @@ async function run() {
             const query = req.body;
             const result = await upVoteCollection.insertOne(query);
             res.send(result);
+        })
+
+        // Coupon api 
+
+        app.get('/coupon', async (req, res) => {
+            const result = await couponCollection.find().toArray();
+            res.send(result);
+        })
+
+        app.get('/coupon/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await couponCollection.findOne(query);
+            res.send(result)
+        })
+
+        app.post('/coupon', async (req, res) => {
+            const query = req.body;
+            const result = await couponCollection.insertOne(query);
+            res.send(result)
+        })
+
+        app.put('/coupon/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const filter = req.body;
+            const updatedDoc = {
+                $set: {
+                    couponCode: filter.couponCode,
+                    expiryDate: filter.expiryDate,
+                    discountAmount: filter.discountAmount,
+                    description: filter.description,
+                }
+            }
+            const result = await couponCollection.updateOne(query, updatedDoc);
+            res.send(result)
+        })
+
+        app.delete('/coupon/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await couponCollection.deleteOne(query);
+            res.send(result)
+        })
+
+
+        // payment intent 
+        app.post('/create-payment-intent', async (req, res) => {
+            const { price } = req.body;
+            const amount = parseInt(price * 100);
+
+            console.log(amount, 'amount inside the intent');
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ["card", "link"],
+            })
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        })
+
+        // app.get('/payments/:email', verifyToken, async(req, res) => {
+        //     const query = {email: req.params.email}
+        //     if( req.params.email !== req.decoded.email){
+        //         return res.status(403).send({message: 'forbidden access'})
+        //     }
+        //     const result = await paymentCollection.find(query).toArray();
+        //     res.send(result)
+        // })
+
+        app.post('/payments', verifyToken, async (req, res) => {
+            const payment = req.body;
+            const paymentResult = await paymentCollection.insertOne(payment);
+            res.send(paymentResult);
         })
 
 
