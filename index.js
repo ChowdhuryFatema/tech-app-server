@@ -11,6 +11,8 @@ const port = process.env.PORT || 5000;
 app.use(cors({
     origin: [
         'http://localhost:5173',
+        'https://tech-apps-f8d51.web.app',
+        'https://tech-apps-f8d51.firebaseapp.com',
     ]
 }))
 app.use(express.json())
@@ -41,6 +43,7 @@ async function run() {
         const upVoteCollection = db.collection("upVote");
         const paymentCollection = db.collection("payments");
         const couponCollection = db.collection("coupon");
+        const addAProductCollection = db.collection("addAProduct");
 
 
         // middlewares
@@ -83,20 +86,8 @@ async function run() {
         })
 
 
-        // user verify moderator after verify token
-        // const verifyModerator = async (req, res, next) => {
-        //     const email = req.decoded.email;
-        //     const query = { email: email }
-        //     const user = await userCollection.findOne(query);
-        //     const isModerator = user?.role === 'moderator';
-        //     if (!isModerator) {
-        //         return res.status(403).send({ message: 'forbidden access' })
-        //     }
-        //     next();
-        // }
-
-
         // user collection 
+        
         app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
 
             const result = await userCollection.find().toArray();
@@ -190,12 +181,7 @@ async function run() {
             res.send(result);
         })
 
-        // app.get('/product/:accepted', async(req, res) => {
-        //     const query = {role: req.params.role}
-        //     console.log(query);
-        //     const result = await productsCollection.find(query);
-        //     res.send(result);
-        // })
+        
 
         app.get('/product/:email', verifyToken, async (req, res) => {
             const query = { email: req.params.email }
@@ -203,8 +189,17 @@ async function run() {
             res.send(result)
         })
 
-        app.post('/products', async (req, res) => {
+        app.post('/products', verifyToken, async (req, res) => {
             const query = req.body;
+            const email = req.decoded.email;
+            const userEmail = {email: email}
+
+            const isExists = await addAProductCollection.findOne(userEmail);
+
+            if(isExists?.status && isExists?.status === 'Pending'){
+                return res.send({ message: 'already exists', insertedId: null })
+            }
+
             const result = await productsCollection.insertOne(query);
             res.send(result)
         })
@@ -239,6 +234,20 @@ async function run() {
             res.send(result)
         })
 
+        app.patch('/productDetails/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: id }
+            const voteQuery = { productId: id }
+
+            const options = { upsert: true };
+            const updateDoc = {
+                $inc: { upvotes: 1 },
+            }
+
+            const result = await productsCollection.updateOne(query, updateDoc, options)
+            res.send(result)
+        })
+
         app.delete('/product/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
@@ -252,6 +261,37 @@ async function run() {
             res.send(result)
         })
 
+
+        // single Product add api 
+        app.post('/addAProduct', async (req, res) => {
+            const query = req.body;
+            const filter = { email: query.email }
+            const isExists = await addAProductCollection.findOne(filter)
+            if(isExists){
+                return res.send({ message: 'already exists', insertedId: null })
+            }
+
+            const result = await addAProductCollection.insertOne(query);
+            res.send(result);
+        })
+
+        app.patch('/addAProduct/:email', async(req, res) => {
+            const query = req.body;
+            const email = req.params.email;
+            const userEmail = {email: email}
+            console.log(email);
+
+            const filter = await addAProductCollection.findOne(userEmail);
+            console.log(filter);
+            const status = filter.status;
+            const updatedDoc = {
+                $set: {
+                   status:  query.status
+                }
+            }
+
+            const result = await addAProductCollection.updateOne(userEmail, updatedDoc)
+        })
 
 
         // allProducts related api
@@ -268,6 +308,13 @@ async function run() {
             res.send(result);
         })
 
+        app.get('/allProduct', async (req, res) => {
+
+            const filter = req.query;
+            const result = await allProductsCollection.find(filter).toArray();
+            res.send(result);
+        })
+
         app.post('/allProducts', async (req, res) => {
             const query = req.body;
             const filter = await allProductsCollection.findOne(query);
@@ -280,7 +327,7 @@ async function run() {
         })
 
 
-        app.put('/allProducts/:id', verifyToken, async (req, res) => {
+        app.patch('/allProducts/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: id }
             const voteQuery = { productId: id }
@@ -289,15 +336,6 @@ async function run() {
             const updateDoc = {
                 $inc: { upvotes: 1 },
             }
-
-            // const existingUpvote = await upVoteCollection.findOne(voteQuery);
-
-            // console.log(existingUpvote.productId, id, existingUpvote.email, req.decoded.email);
-
-            // if(existingUpvote && (existingUpvote.productId === id && existingUpvote.email === req.decoded.email)){
-            //     return res.send({ message: 'Upvote already added', insertedId: null })
-            // }
-
 
             const result = await allProductsCollection.updateOne(query, updateDoc, options)
             res.send(result)
@@ -334,18 +372,10 @@ async function run() {
         app.patch('/featured/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: id }
-            const options = { upsert: true };
             const updateDoc = {
-                $inc: { upvotes: 1 },
-                $set: { upvote: 'true' }
+                $inc: { upvotes: 1 }
             }
-            const existingUpvote = await featuredCollection.findOne(query);
-
-            if (existingUpvote.upvote == 'true') {
-                return res.send({ message: 'Upvote already added', insertedId: null })
-            }
-
-            const result = await featuredCollection.updateOne(query, updateDoc, options)
+            const result = await featuredCollection.updateOne(query, updateDoc)
             res.send(result)
         })
 
@@ -387,11 +417,11 @@ async function run() {
         })
 
         // upvote api 
-        app.post('/upVote', async (req, res) => {
-            const query = req.body;
-            const result = await upVoteCollection.insertOne(query);
-            res.send(result);
-        })
+        // app.post('/upVote', async (req, res) => {
+        //     const query = req.body;
+        //     const result = await upVoteCollection.insertOne(query);
+        //     res.send(result);
+        // })
 
         // Coupon api 
 
@@ -454,14 +484,14 @@ async function run() {
             });
         })
 
-        // app.get('/payments/:email', verifyToken, async(req, res) => {
-        //     const query = {email: req.params.email}
-        //     if( req.params.email !== req.decoded.email){
-        //         return res.status(403).send({message: 'forbidden access'})
-        //     }
-        //     const result = await paymentCollection.find(query).toArray();
-        //     res.send(result)
-        // })
+        app.get('/payments/:email', verifyToken, async(req, res) => {
+            const query = {email: req.params.email}
+            if( req.params.email !== req.decoded.email){
+                return res.status(403).send({message: 'forbidden access'})
+            }
+            const result = await paymentCollection.find(query).toArray();
+            res.send(result)
+        })
 
         app.post('/payments', verifyToken, async (req, res) => {
             const payment = req.body;
