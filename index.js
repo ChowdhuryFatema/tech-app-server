@@ -416,13 +416,6 @@ async function run() {
             res.send(result)
         })
 
-        // upvote api 
-        // app.post('/upVote', async (req, res) => {
-        //     const query = req.body;
-        //     const result = await upVoteCollection.insertOne(query);
-        //     res.send(result);
-        // })
-
         // Coupon api 
 
         app.get('/coupon', async (req, res) => {
