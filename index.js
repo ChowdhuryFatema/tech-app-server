@@ -147,7 +147,6 @@ async function run() {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) }
             const query = req.body;
-            console.log(query);
             const updatedDoc = {
                 $set: {
                     role: query.role
@@ -207,7 +206,6 @@ async function run() {
         app.put('/products/:id', async (req, res) => {
             const id = req.params.id
             const status = req.body
-            console.log(status);
             const query = { _id: new ObjectId(id) }
             const updateDoc = {
                 $set: status
@@ -220,7 +218,6 @@ async function run() {
             const id = req.params.id
             const query = { _id: new ObjectId(id) }
             const filter = req.body;
-            console.log('id', id, 'body', filter, query);
             const updatedDoc = {
                 $set: {
                     image: filter.image,
@@ -236,7 +233,7 @@ async function run() {
 
         app.patch('/productDetails/:id', async (req, res) => {
             const id = req.params.id;
-            const query = { _id: id }
+            const query = { _id: new ObjectId(id) }
             const voteQuery = { productId: id }
 
             const options = { upsert: true };
@@ -279,10 +276,9 @@ async function run() {
             const query = req.body;
             const email = req.params.email;
             const userEmail = {email: email}
-            console.log(email);
 
             const filter = await addAProductCollection.findOne(userEmail);
-            console.log(filter);
+        
             const status = filter.status;
             const updatedDoc = {
                 $set: {
@@ -327,7 +323,7 @@ async function run() {
         })
 
 
-        app.patch('/allProducts/:id', async (req, res) => {
+        app.patch('/allProducts/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const query = { _id: id }
             const voteQuery = { productId: id }
@@ -336,6 +332,15 @@ async function run() {
             const updateDoc = {
                 $inc: { upvotes: 1 },
             }
+
+            const email = req.decoded.email;
+            const filter = { email: email, productId: id };
+
+            const isExists = await upVoteCollection.findOne(filter);
+
+           if(isExists){
+            return res.send({ message: 'Already Added', insertedId: null })
+           }
 
             const result = await allProductsCollection.updateOne(query, updateDoc, options)
             res.send(result)
@@ -348,6 +353,27 @@ async function run() {
             const query = { _id: id }
             const result = await allProductsCollection.deleteOne(query);
             res.send(result);
+        })
+
+
+        // upvote 
+        app.post('/upvotes/:id', verifyToken, async(req, res) => {
+            const query = req.body;
+
+            const productId = req.params.id;
+            const email = req.body.email;
+            const filter = { email: email, productId: productId };
+            
+
+            const isExists = await upVoteCollection.findOne(filter);
+           
+
+           if(isExists){
+            return res.send({ message: 'Already Added', insertedId: null })
+           }
+
+            const result = await upVoteCollection.insertOne(query);
+            res.send(result)
         })
 
 
@@ -369,12 +395,26 @@ async function run() {
 
         })
 
-        app.patch('/featured/:id', async (req, res) => {
+        app.patch('/featured/:id', verifyToken, async(req, res) => {
             const id = req.params.id;
             const query = { _id: id }
             const updateDoc = {
                 $inc: { upvotes: 1 }
             }
+
+            const email = req.decoded.email;
+            console.log(email);
+            const filter = { email: email, productId: id };
+            
+
+            const isExists = await upVoteCollection.findOne(filter);
+            console.log(isExists);
+
+           if(isExists){
+            return res.send({ message: 'Already Added', insertedId: null })
+           }
+
+
             const result = await featuredCollection.updateOne(query, updateDoc)
             res.send(result)
         })
